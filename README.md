@@ -6,6 +6,6 @@ This simple Program emulates a Kuka Robot for testing purposes with Kuka Matlab 
 #Examples
 
 #Author & Info
-Matthias S.
-matthias@seehauser.at
+Matthias S.<br/>
+matthias@seehauser.at<br/>
 http://www.seesle.at
