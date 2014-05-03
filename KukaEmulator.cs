@@ -267,7 +267,7 @@ namespace KukaMatlabConnector
 
                     loopCount++;
 
-                    System.Threading.Thread.Sleep(11);
+                    System.Threading.Thread.Sleep(6);
 
                     comHandler.Receive(incomingDataByteBuffer);
 
