@@ -32,8 +32,7 @@ namespace KukaMatlabConnector
         static System.Threading.Thread kukaRobotDummyThread_;  // creating thread instance
 
         static bool doTheRobotLoop_;                                // do the server loop until this variable is false
-        const int tagLineIncrement = 6;                        // from the beginning of the Line to the tag
-        static uint interpolationCounter;
+        static uint interpolationCounter_;
 
         static void Main(string[] args)
         {
@@ -41,7 +40,7 @@ namespace KukaMatlabConnector
             // initialize variables
             // --------------------------------------------------------------------------------
             doTheRobotLoop_ = true;
-            interpolationCounter = 0;
+            interpolationCounter_ = 0;
             
             // initialize stopwatch for diagnostics
             stopWatch_ = new System.Diagnostics.Stopwatch();
@@ -52,6 +51,10 @@ namespace KukaMatlabConnector
 
             kukaRobotDummyThread_ = new System.Threading.Thread(new System.Threading.ThreadStart(kukaRobotDummyThread));
             kukaRobotDummyThread_.Start();
+
+            System.GC.Collect();
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.LowLatency;
+            //System.GC.SuppressFinalize(kukaRobotDummyThread_);
         }
 
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
@@ -131,25 +134,15 @@ namespace KukaMatlabConnector
          *  @retval   string ... the modified string for the controller
          */
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
-        private static string mirrorInterpolationCounter(string send, uint ipoCounter)
+        private static String mirrorInterpolationCounter(string sendString, uint ipocCounter)
         {
-            System.Xml.XmlDocument localSendXMLDoc;
-            System.Xml.XmlNodeList localSendXMLNodeList;
-            String localSendString;
+            int startIpocSendIndex = sendString.IndexOf("<IPOC>") + 6;
+            int endIpocSendIndex = sendString.IndexOf("</IPOC>");
 
-            localSendXMLDoc = null;
-            localSendXMLNodeList = null;
-            localSendString = null;
+            sendString = sendString.Remove(startIpocSendIndex, endIpocSendIndex - startIpocSendIndex);
+            sendString = sendString.Insert(startIpocSendIndex, ipocCounter.ToString());
 
-            localSendXMLDoc = new System.Xml.XmlDocument();
-
-            localSendXMLDoc.LoadXml(send);
-            localSendXMLNodeList = localSendXMLDoc.GetElementsByTagName("IPOC");
-            localSendXMLNodeList[0].InnerText = Convert.ToString(ipoCounter);
-
-            localSendString = localSendXMLDoc.OuterXml;
-
-            return localSendString;
+            return sendString;
         }
 
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
@@ -251,25 +244,36 @@ namespace KukaMatlabConnector
                     String strSend;
                     System.Text.StringBuilder strSendBuilder = new System.Text.StringBuilder();
 
+                    // starting stopwatch
                     stopWatch_.Reset();
                     stopWatch_.Start();
 
+                    // adding 0x0a two times to have the same string as the robot sends
                     strSend = sendXML.InnerXml;
-                    strSend = mirrorInterpolationCounter(strSend, interpolationCounter);
+                    strSend = mirrorInterpolationCounter(strSend, interpolationCounter_);
                     strSendBuilder.Append(strSend).Append((char)10).Append((char)10);
                     strSend = strSendBuilder.ToString();
 
+                    // convert into byte array
                     message = System.Text.Encoding.ASCII.GetBytes(strSend);
 
+                    // send the message to the external system
                     comHandler.Send(message, 0, message.Length, System.Net.Sockets.SocketFlags.None);
 
-                    interpolationCounter++;
+                    // increment interpolation counter
+                    interpolationCounter_++;
 
+                    // increment loopcounter
                     loopCount++;
 
-                    System.Threading.Thread.Sleep(6);
-
+                    // start receiving
                     comHandler.Receive(incomingDataByteBuffer);
+
+                    // make garbage collector to collect now
+                    System.GC.Collect();
+
+                    // wait some time
+                    System.Threading.Thread.Sleep(5);
 
                     Console.Clear();
 
