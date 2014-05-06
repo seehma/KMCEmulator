@@ -24,7 +24,7 @@ namespace KukaMatlabConnector
     {
         static IPAddress wrapperIPAddress_;
         static uint robotCommunicationPort_ = 6008;
-        static String pathToXMLSendDocument_ = "ExternalData.xml";
+        static String pathToXMLSendDocument_ = "robotinfo.xml";
 
         static System.Diagnostics.Stopwatch stopWatch_;
 
