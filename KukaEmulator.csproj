@@ -47,10 +47,10 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="robotinfoxml\ExternalData.xml" />
+    <Content Include="robotinfoxml\robotinfo.xml" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="robotinfoxml\ExternalData.xsd" />
+    <None Include="robotinfoxml\robotinfo.xsd" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
