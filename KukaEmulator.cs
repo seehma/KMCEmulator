@@ -36,6 +36,9 @@ namespace KukaMatlabConnector
 
         static void Main(string[] args)
         {
+            String protocolAnswer;
+            bool protocolFound = false;
+
             // --------------------------------------------------------------------------------
             // initialize variables
             // --------------------------------------------------------------------------------
@@ -49,12 +52,85 @@ namespace KukaMatlabConnector
             Console.WriteLine("starting KUKA Dummy Robot for testing purposes!");
             Console.ReadKey();
 
-            kukaRobotDummyThread_ = new System.Threading.Thread(new System.Threading.ThreadStart(kukaRobotDummyThread));
-            kukaRobotDummyThread_.Start();
+            while( protocolFound == false)
+            {
+                Console.Clear();
+                Console.WriteLine("which protocol do you want me to emulate? (UDP, TCP)");
+                protocolAnswer = Console.ReadLine();
+
+                if( String.Equals(protocolAnswer, "UDP") )
+                {
+                    kukaRobotDummyThread_ = new System.Threading.Thread(new System.Threading.ThreadStart(kukaRobotDummyThreadUDP));
+                    kukaRobotDummyThread_.Start();
+                    protocolFound = true;
+                }
+                else if( String.Equals(protocolAnswer, "TCP") )
+                {
+                    kukaRobotDummyThread_ = new System.Threading.Thread(new System.Threading.ThreadStart(kukaRobotDummyThreadTCP));
+                    kukaRobotDummyThread_.Start();
+                    protocolFound = true;
+                }
+                else
+                {
+                    protocolFound = false;
+                }
+            }
 
             System.GC.Collect();
             System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.LowLatency;
-            //System.GC.SuppressFinalize(kukaRobotDummyThread_);
+        }
+
+        private static void kukaRobotDummyThreadUDP()
+        {
+            byte[] bytes;                           // data buffer for incoming data
+            bool clientReturn;
+
+            System.Xml.XmlDocument sendXML;
+            System.Net.Sockets.Socket comHandler;   // create system socket
+            System.Net.IPEndPoint extSysEndPoint;
+
+            sendXML = new System.Xml.XmlDocument();   // load variable with xmlDocument instance
+            bytes = new Byte[1024];                 // load byte buffer with instance
+
+            while (doTheRobotLoop_)
+            {
+                wrapperIPAddress_ = getUserEnteredIPAddressToConnect();
+                if (wrapperIPAddress_ != null)
+                {
+                    sendXML = getXMLSendDocument(pathToXMLSendDocument_);
+                    if (sendXML != null)
+                    {
+                        while (true)
+                        {
+                            Console.WriteLine("press a key to connect to matlab server app...");
+                            
+                            Console.Read();
+
+                            extSysEndPoint = new System.Net.IPEndPoint(wrapperIPAddress_, (int)robotCommunicationPort_);
+
+                            comHandler = new System.Net.Sockets.Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+                            clientReturn = emulatorLoopUDP(comHandler, sendXML, extSysEndPoint);
+
+                            // when the loop is finished then close the socket
+                            comHandler.Close();
+                            Console.Clear();
+                            Console.WriteLine("connection closed by matlab server app...");
+                            Console.Read();
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("could not find xml document to send to the robot! check the path!");
+                        Console.Read();
+                    }
+                }
+                else
+                {
+                    doTheRobotLoop_ = false;
+                }
+            }
         }
 
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
@@ -65,7 +141,7 @@ namespace KukaMatlabConnector
          * 
          */
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
-        private static void kukaRobotDummyThread()
+        private static void kukaRobotDummyThreadTCP()
         {
             byte[] bytes;                           // data buffer for incoming data
             bool clientReturn;
@@ -92,7 +168,7 @@ namespace KukaMatlabConnector
                             comHandler = startServerClientConnection(wrapperIPAddress_, robotCommunicationPort_);
                             if (comHandler != null)
                             {
-                                clientReturn = emulatorLoop(comHandler, sendXML);
+                                clientReturn = emulatorLoopTCP(comHandler, sendXML);
 
                                 // when the loop is finished then close the socket
                                 comHandler.Close();
@@ -216,7 +292,7 @@ namespace KukaMatlabConnector
          *  @retval   none
          */
         /* -------------------------------------------------------------------------------------------------------------------------------------- */
-        private static bool emulatorLoop(System.Net.Sockets.Socket comHandler, System.Xml.XmlDocument sendXML)
+        private static bool emulatorLoopTCP(System.Net.Sockets.Socket comHandler, System.Xml.XmlDocument sendXML)
         {
             // variable declarations
             bool localReturn;
@@ -286,6 +362,95 @@ namespace KukaMatlabConnector
                 }
                 catch
                 {
+                    break;
+                }
+            }
+
+            return localReturn;
+        }
+
+        private static bool emulatorLoopUDP(System.Net.Sockets.Socket comHandler, System.Xml.XmlDocument sendXML, System.Net.IPEndPoint endPoint)
+        {
+            // variable declarations
+            bool localReturn;
+            int loopCount;
+
+            long toobigcounter;
+            byte[] incomingDataByteBuffer;
+
+            // create end point from which the packets are received
+            System.Net.IPEndPoint testEndPoint = null;
+
+            // create udp listener
+            System.Net.IPAddress localIPAddress = System.Net.IPAddress.Parse("192.168.2.3");
+            System.Net.IPEndPoint localEndPoint = new System.Net.IPEndPoint(localIPAddress, (int)robotCommunicationPort_);
+            System.Net.Sockets.UdpClient listener = new System.Net.Sockets.UdpClient(localEndPoint);
+
+            listener.Client.ReceiveTimeout = 1000;
+
+            // variable initialization
+            localReturn = false;
+            loopCount = 0;
+            toobigcounter = 0;
+
+            // --------------------------------------------------
+            // now lets start the endles loop
+            // --------------------------------------------------            
+            while (true)
+            {
+                byte[] message;
+
+                try
+                {
+                    String strSend;
+                    System.Text.StringBuilder strSendBuilder = new System.Text.StringBuilder();
+
+                    incomingDataByteBuffer = null;
+
+                    // starting stopwatch
+                    stopWatch_.Reset();
+                    stopWatch_.Start();
+
+                    // adding 0x0a two times to have the same string as the robot sends
+                    strSend = sendXML.InnerXml;
+                    strSend = mirrorInterpolationCounter(strSend, interpolationCounter_);
+                    strSendBuilder.Append(strSend).Append((char)10).Append((char)10);
+                    strSend = strSendBuilder.ToString();
+
+                    // convert into byte array
+                    message = System.Text.Encoding.ASCII.GetBytes(strSend);
+
+                    // send the message to the external system
+                    comHandler.SendTo(message, endPoint);
+
+                    // increment interpolation counter
+                    interpolationCounter_++;
+
+                    // increment loopcounter
+                    loopCount++;
+
+                    // start receiving
+                    incomingDataByteBuffer = listener.Receive(ref testEndPoint);
+
+                    // make garbage collector to collect now
+                    System.GC.Collect();
+
+                    // wait some time
+                    System.Threading.Thread.Sleep(5);
+
+                    Console.Clear();
+
+                    stopWatch_.Stop();
+
+                    if (stopWatch_.ElapsedMilliseconds > 13) toobigcounter++;
+                    Console.Write("time:" + Convert.ToString(stopWatch_.ElapsedMilliseconds));
+                    Console.Write(" toobigcounter:" + Convert.ToString(toobigcounter));
+                    Console.Write(" loopcount:" + Convert.ToString(loopCount));
+                }
+                catch
+                {
+                    Console.Clear();
+                    Console.Write("Timeout happened");
                     break;
                 }
             }
